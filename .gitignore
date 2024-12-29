@@ -96,3 +96,5 @@ local.properties
 # ==================
 .cache
 compile_commands.json
+/bin
+/CMakeFiles

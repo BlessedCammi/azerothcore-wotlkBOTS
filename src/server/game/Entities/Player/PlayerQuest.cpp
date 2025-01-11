@@ -434,9 +434,7 @@ void Player::AddQuestAndCheckCompletion(Quest const* quest, Object* questGiver)
             {
                 if (primaryAcc == otherAcc && this != member)
                 {
-                    member->AddQuest(quest, questGiver);
-                    if (member->CanCompleteQuest(quest->GetQuestId()))
-                        member->CompleteQuest(quest->GetQuestId());
+                    AddQuest(quest, questGiver);
                 }
             }
 
@@ -641,12 +639,7 @@ void Player::CompleteQuest(uint32 quest_id)
             {
                 if (primaryAcc == otherAcc && this != member)
                 {
-                    member->SetQuestStatus(quest_id, QUEST_STATUS_COMPLETE);
-                    auto log_slot = member->FindQuestSlot(quest_id);
-                    if (log_slot < MAX_QUEST_LOG_SIZE)
-                    {
-                        member->SetQuestSlotState(log_slot, QUEST_STATE_COMPLETE);
-                    }
+                    SetQuestStatus(quest_id, QUEST_STATUS_COMPLETE);
                 }
             }
 
@@ -845,9 +838,9 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
                         if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]))
                         {
                             if (quest->RequiredItemCount[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM && !quest->IsRepeatable() && !HasQuestForItem(quest->RequiredItemId[i], quest_id, true))
-                                member->DestroyItemCount(quest->RequiredItemId[i], 9999, true);
+                                DestroyItemCount(quest->RequiredItemId[i], 9999, true);
                             else
-                                member->DestroyItemCount(quest->RequiredItemId[i], quest->RequiredItemCount[i], true);
+                                DestroyItemCount(quest->RequiredItemId[i], quest->RequiredItemCount[i], true);
                         }
                     }
                     for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
@@ -855,22 +848,22 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
                         if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->ItemDrop[i]))
                         {
                             if (quest->ItemDropQuantity[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM && !quest->IsRepeatable() && !HasQuestForItem(quest->ItemDrop[i], quest_id))
-                                member->DestroyItemCount(quest->ItemDrop[i], 9999, true);
+                                DestroyItemCount(quest->ItemDrop[i], 9999, true);
                             else
-                                member->DestroyItemCount(quest->ItemDrop[i], quest->ItemDropQuantity[i], true);
+                                DestroyItemCount(quest->ItemDrop[i], quest->ItemDropQuantity[i], true);
                         }
                     }
-                    member->RemoveTimedQuest(quest_id);
+                    RemoveTimedQuest(quest_id);
                     sScriptMgr->OnGivePlayerXP(member, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
                     member->GiveXP(XP, nullptr, 1.0f, isLFGReward);
-                    member->RewardReputation(quest);
+                    RewardReputation(quest);
                     // title reward
                     if (quest->GetCharTitleId()) // Cammi - share quest titles
                     {
                         if (CharTitlesEntry const* titleEntry = sCharTitlesStore.LookupEntry(quest->GetCharTitleId()))
-                            member->SetTitle(titleEntry);
+                            SetTitle(titleEntry);
                     }
-                    member->RemoveActiveQuest(quest_id, false);
+                    RemoveActiveQuest(quest_id, false);
                 }
             }
 

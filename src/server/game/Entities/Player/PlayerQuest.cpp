@@ -32,7 +32,6 @@
 #include "SpellMgr.h"
 #include "WorldSession.h"
 
-
 /*********************************************************/
 /***                    QUEST SYSTEM                   ***/
 /*********************************************************/
@@ -729,29 +728,6 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         }
     }
 
-    //give remaining unselected choice item rewards to player
-    if (quest->GetRewChoiceItemsCount() > 1)
-    {
-        for (uint8 rewardIdx = 0; rewardIdx < quest->GetRewChoiceItemsCount(); ++rewardIdx)
-        {
-            ItemTemplate* pRewardItem = const_cast<ItemTemplate*>(sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[rewardIdx]));
-            pRewardItem->Flags = static_cast<ItemFlags>(pRewardItem->Flags | ITEM_FLAG_IS_BOUND_TO_ACCOUNT);
-            if (reward != pRewardItem->ItemId)
-            {
-                ItemPosCountVec dest;
-                if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, pRewardItem->ItemId, quest->RewardItemIdCount[pRewardItem->ItemId]) == EQUIP_ERR_OK)
-                {
-                    Item* item = StoreNewItem(dest, pRewardItem->ItemId, true);
-                    SendNewItem(item, quest->RewardItemIdCount[pRewardItem->ItemId], true, false, false, false);
-
-                    sScriptMgr->OnQuestRewardItem(this, item, quest->RewardItemIdCount[pRewardItem->ItemId]);
-                }
-                else
-                    problematicItems.emplace_back(pRewardItem->ItemId, quest->RewardItemIdCount[pRewardItem->ItemId]);
-            }
-        }
-    }
-
     // Xinef: send items that couldn't be added properly by mail
     if (!problematicItems.empty())
     {
@@ -779,26 +755,6 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     {
         sScriptMgr->OnGivePlayerXP(this, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
         GiveXP(XP, nullptr, 1.0f, isLFGReward);
-    }
-
-    Group* group = this->GetGroup(); //Reward all quest EXP to playerbots in group.
-    if (group)
-    {
-        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-        {
-            Player* member = ref->GetSource();
-            uint32 primaryAcc = this->GetSession()->GetAccountId();
-            uint32 otherAcc = member->GetSession()->GetAccountId();
-            if(member && primaryAcc && otherAcc)
-            {
-                if (primaryAcc == otherAcc)
-                {
-                    sScriptMgr->OnGivePlayerXP(member, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
-                    GiveXP(XP, nullptr, 1.0f, isLFGReward);
-                }
-            }
-
-        }
     }
 
     // Give player extra money if GetRewOrReqMoney > 0 and get ReqMoney if negative

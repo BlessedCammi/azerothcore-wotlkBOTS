@@ -31,6 +31,7 @@
 #include "SpellAuraEffects.h"
 #include "SpellMgr.h"
 #include "WorldSession.h"
+#include "../../modules/mod-playerbots/src/PlayerbotMgr.h"
 
 /*********************************************************/
 /***                    QUEST SYSTEM                   ***/
@@ -728,6 +729,29 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         }
     }
 
+    //give remaining unselected choice item rewards to player
+    if (quest->GetRewChoiceItemsCount() > 1)
+    {
+        for (uint8 rewardIdx = 0; rewardIdx < quest->GetRewChoiceItemsCount(); ++rewardIdx)
+        {
+            ItemTemplate* pRewardItem = const_cast<ItemTemplate*>(sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[rewardIdx]));
+            pRewardItem->Flags = static_cast<ItemFlags>(pRewardItem->Flags | ITEM_FLAG_IS_BOUND_TO_ACCOUNT);
+            if (reward != pRewardItem->ItemId)
+            {
+                ItemPosCountVec dest;
+                if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, pRewardItem->ItemId, quest->RewardItemIdCount[pRewardItem->ItemId]) == EQUIP_ERR_OK)
+                {
+                    Item* item = StoreNewItem(dest, pRewardItem->ItemId, true);
+                    SendNewItem(item, quest->RewardItemIdCount[pRewardItem->ItemId], true, false, false, false);
+
+                    sScriptMgr->OnQuestRewardItem(this, item, quest->RewardItemIdCount[pRewardItem->ItemId]);
+                }
+                else
+                    problematicItems.emplace_back(pRewardItem->ItemId, quest->RewardItemIdCount[pRewardItem->ItemId]);
+            }
+        }
+    }
+
     // Xinef: send items that couldn't be added properly by mail
     if (!problematicItems.empty())
     {
@@ -753,6 +777,21 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     }
     else
     {
+        Group* group = this->GetGroup();
+        if (group)
+        {
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->GetSource();
+                 //member->
+                if (sPlayerbotsMgr->isBot(member))
+                {
+                    sScriptMgr->OnGivePlayerXP(this, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
+                    GiveXP(XP, nullptr, 1.0f, isLFGReward);
+                }
+
+            }
+        }
         sScriptMgr->OnGivePlayerXP(this, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
         GiveXP(XP, nullptr, 1.0f, isLFGReward);
     }

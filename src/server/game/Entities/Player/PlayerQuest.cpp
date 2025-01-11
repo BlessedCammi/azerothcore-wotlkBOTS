@@ -421,6 +421,25 @@ bool Player::CanRewardQuest(Quest const* quest, bool msg)
 void Player::AddQuestAndCheckCompletion(Quest const* quest, Object* questGiver)
 {
     AddQuest(quest, questGiver);
+    Group* group = this->GetGroup();
+    if (group)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            uint32 primaryAcc = this->GetSession()->GetAccountId();
+            uint32 otherAcc = member->GetSession()->GetAccountId();
+            if (member && primaryAcc && otherAcc)
+            {
+                if (primaryAcc == otherAcc && this != member)
+                {
+                    member->AddQuest(quest, questGiver);
+                    if (member->CanCompleteQuest(quest->GetQuestId()))
+                        member->CompleteQuest(quest->GetQuestId());
+                }
+            }
+        }
+    }
 
     if (CanCompleteQuest(quest->GetQuestId()))
         CompleteQuest(quest->GetQuestId());
@@ -609,6 +628,29 @@ void Player::CompleteQuest(uint32 quest_id)
 
     SetQuestStatus(quest_id, QUEST_STATUS_COMPLETE);
 
+    Group* group = this->GetGroup();
+    if (group)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            uint32 primaryAcc = this->GetSession()->GetAccountId();
+            uint32 otherAcc = member->GetSession()->GetAccountId();
+            if (member && primaryAcc && otherAcc)
+            {
+                if (primaryAcc == otherAcc && this != member)
+                {
+                    member->SetQuestStatus(quest_id, QUEST_STATUS_COMPLETE);
+                    auto log_slot = member->FindQuestSlot(quest_id);
+                    if (log_slot < MAX_QUEST_LOG_SIZE)
+                    {
+                        member->SetQuestSlotState(log_slot, QUEST_STATE_COMPLETE);
+                    }
+                }
+            }
+        }
+    }
+
     auto log_slot = FindQuestSlot(quest_id);
     if (log_slot < MAX_QUEST_LOG_SIZE)
     {
@@ -688,11 +730,13 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     RemoveTimedQuest(quest_id);
 
     std::vector<std::pair<uint32, uint32>> problematicItems;
+    uint32 choiceitemId = 0;
 
     if (quest->GetRewChoiceItemsCount())
     {
         if (uint32 itemId = quest->RewardChoiceItemId[reward])
         {
+            choiceitemId = itemId;
             ItemPosCountVec dest;
             if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]) == EQUIP_ERR_OK)
             {
@@ -728,6 +772,31 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         }
     }
 
+    //give remaining unselected choice item rewards to player
+    if (quest->GetRewChoiceItemsCount() > 1)
+    {
+        for (uint32 rewardIdx = 0; rewardIdx < QUEST_REWARD_CHOICES_COUNT; ++rewardIdx)
+        {
+            ItemTemplate* pRewardItem = const_cast<ItemTemplate*>(sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[rewardIdx]));
+            if (pRewardItem)
+                pRewardItem->Flags = static_cast<ItemFlags>(pRewardItem->Flags | ITEM_FLAG_IS_BOUND_TO_ACCOUNT);
+            if (pRewardItem && choiceitemId != pRewardItem->ItemId && quest->RewardChoiceItemCount[rewardIdx])
+            {
+                ItemPosCountVec dest;
+                if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, pRewardItem->ItemId, quest->RewardChoiceItemCount[rewardIdx]) == EQUIP_ERR_OK)
+                {
+                    Item* item = StoreNewItem(dest, pRewardItem->ItemId, true);
+                    item->SetBinding(false);
+                    SendNewItem(item, quest->RewardChoiceItemCount[rewardIdx], true, false, false, false);
+
+                    sScriptMgr->OnQuestRewardItem(this, item, quest->RewardChoiceItemCount[rewardIdx]);
+                }
+                else
+                    problematicItems.emplace_back(pRewardItem->ItemId, quest->RewardChoiceItemCount[rewardIdx]);
+            }
+        }
+    }
+
     // Xinef: send items that couldn't be added properly by mail
     if (!problematicItems.empty())
     {
@@ -755,6 +824,55 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     {
         sScriptMgr->OnGivePlayerXP(this, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
         GiveXP(XP, nullptr, 1.0f, isLFGReward);
+    }
+
+    Group* group = this->GetGroup(); //Reward all quest EXP to playerbots in group.
+    if (group)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->GetSource();
+            uint32 primaryAcc = this->GetSession()->GetAccountId();
+            uint32 otherAcc = member->GetSession()->GetAccountId();
+            if (member && primaryAcc && otherAcc)
+            {
+                if (primaryAcc == otherAcc && this != member)
+                {
+                    for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+                    {
+                        if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]))
+                        {
+                            if (quest->RequiredItemCount[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM && !quest->IsRepeatable() && !HasQuestForItem(quest->RequiredItemId[i], quest_id, true))
+                                member->DestroyItemCount(quest->RequiredItemId[i], 9999, true);
+                            else
+                                member->DestroyItemCount(quest->RequiredItemId[i], quest->RequiredItemCount[i], true);
+                        }
+                    }
+                    for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
+                    {
+                        if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->ItemDrop[i]))
+                        {
+                            if (quest->ItemDropQuantity[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM && !quest->IsRepeatable() && !HasQuestForItem(quest->ItemDrop[i], quest_id))
+                                member->DestroyItemCount(quest->ItemDrop[i], 9999, true);
+                            else
+                                member->DestroyItemCount(quest->ItemDrop[i], quest->ItemDropQuantity[i], true);
+                        }
+                    }
+                    member->RemoveTimedQuest(quest_id);
+                    sScriptMgr->OnGivePlayerXP(member, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
+                    member->GiveXP(XP, nullptr, 1.0f, isLFGReward);
+                    member->RewardReputation(quest);
+                    // title reward
+                    if (quest->GetCharTitleId()) // Cammi - share quest titles
+                    {
+                        if (CharTitlesEntry const* titleEntry = sCharTitlesStore.LookupEntry(quest->GetCharTitleId()))
+                            member->SetTitle(titleEntry);
+                    }
+                    member->RemoveActiveQuest(quest_id, false);
+                }
+            }
+
+        }
     }
 
     // Give player extra money if GetRewOrReqMoney > 0 and get ReqMoney if negative

@@ -100,8 +100,3 @@ local.properties
 # ==================
 .cache
 compile_commands.json
-/bin
-/CMakeFiles
-CMakeCache.txt
-/bin
-/bin

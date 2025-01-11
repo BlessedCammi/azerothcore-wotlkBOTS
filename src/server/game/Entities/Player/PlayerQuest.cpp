@@ -422,24 +422,6 @@ bool Player::CanRewardQuest(Quest const* quest, bool msg)
 void Player::AddQuestAndCheckCompletion(Quest const* quest, Object* questGiver)
 {
     AddQuest(quest, questGiver);
-    Group* group = this->GetGroup();
-    if (group)
-    {
-        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-        {
-            Player* member = ref->GetSource();
-            uint32 primaryAcc = this->GetSession()->GetAccountId();
-            uint32 otherAcc = member->GetSession()->GetAccountId();
-            if (member && primaryAcc && otherAcc)
-            {
-                if (primaryAcc == otherAcc && this != member)
-                {
-                    AddQuest(quest, questGiver);
-                }
-            }
-
-        }
-    }
 
     if (CanCompleteQuest(quest->GetQuestId()))
         CompleteQuest(quest->GetQuestId());
@@ -627,24 +609,6 @@ void Player::CompleteQuest(uint32 quest_id)
     }
 
     SetQuestStatus(quest_id, QUEST_STATUS_COMPLETE);
-    Group* group = this->GetGroup();
-    if (group)
-    {
-        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-        {
-            Player* member = ref->GetSource();
-            uint32 primaryAcc = this->GetSession()->GetAccountId();
-            uint32 otherAcc = member->GetSession()->GetAccountId();
-            if (member && primaryAcc && otherAcc)
-            {
-                if (primaryAcc == otherAcc && this != member)
-                {
-                    SetQuestStatus(quest_id, QUEST_STATUS_COMPLETE);
-                }
-            }
-
-        }
-    }
 
     auto log_slot = FindQuestSlot(quest_id);
     if (log_slot < MAX_QUEST_LOG_SIZE)
@@ -798,7 +762,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         SendItemRetrievalMail(problematicItems);
     }
 
-    RewardReputation(quest); 
+    RewardReputation(quest);
 
     uint16 log_slot = FindQuestSlot(quest_id);
     if (log_slot < MAX_QUEST_LOG_SIZE)
@@ -833,37 +797,8 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
             {
                 if (primaryAcc == otherAcc && this != member)
                 {
-                    for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
-                    {
-                        if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]))
-                        {
-                            if (quest->RequiredItemCount[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM && !quest->IsRepeatable() && !HasQuestForItem(quest->RequiredItemId[i], quest_id, true))
-                                DestroyItemCount(quest->RequiredItemId[i], 9999, true);
-                            else
-                                DestroyItemCount(quest->RequiredItemId[i], quest->RequiredItemCount[i], true);
-                        }
-                    }
-                    for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
-                    {
-                        if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->ItemDrop[i]))
-                        {
-                            if (quest->ItemDropQuantity[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM && !quest->IsRepeatable() && !HasQuestForItem(quest->ItemDrop[i], quest_id))
-                                DestroyItemCount(quest->ItemDrop[i], 9999, true);
-                            else
-                                DestroyItemCount(quest->ItemDrop[i], quest->ItemDropQuantity[i], true);
-                        }
-                    }
-                    RemoveTimedQuest(quest_id);
                     sScriptMgr->OnGivePlayerXP(member, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
                     member->GiveXP(XP, nullptr, 1.0f, isLFGReward);
-                    RewardReputation(quest);
-                    // title reward
-                    if (quest->GetCharTitleId()) // Cammi - share quest titles
-                    {
-                        if (CharTitlesEntry const* titleEntry = sCharTitlesStore.LookupEntry(quest->GetCharTitleId()))
-                            SetTitle(titleEntry);
-                    }
-                    RemoveActiveQuest(quest_id, false);
                 }
             }
 
@@ -889,7 +824,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         RewardHonor(nullptr, 0, honor);
 
     // title reward
-    if (quest->GetCharTitleId()) // Cammi - share quest titles
+    if (quest->GetCharTitleId())
     {
         if (CharTitlesEntry const* titleEntry = sCharTitlesStore.LookupEntry(quest->GetCharTitleId()))
             SetTitle(titleEntry);

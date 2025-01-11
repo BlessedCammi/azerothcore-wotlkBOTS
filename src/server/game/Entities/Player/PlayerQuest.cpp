@@ -689,13 +689,11 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     RemoveTimedQuest(quest_id);
 
     std::vector<std::pair<uint32, uint32>> problematicItems;
-    uint32 choiceitemId = 0;
 
     if (quest->GetRewChoiceItemsCount())
     {
         if (uint32 itemId = quest->RewardChoiceItemId[reward])
         {
-            choiceitemId = itemId;
             ItemPosCountVec dest;
             if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardChoiceItemCount[reward]) == EQUIP_ERR_OK)
             {
@@ -734,24 +732,22 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     //give remaining unselected choice item rewards to player
     if (quest->GetRewChoiceItemsCount() > 1)
     {
-        for (uint32 rewardIdx = 0; rewardIdx < QUEST_REWARD_CHOICES_COUNT; ++rewardIdx)
+        for (uint8 rewardIdx = 0; rewardIdx < quest->GetRewChoiceItemsCount(); ++rewardIdx)
         {
             ItemTemplate* pRewardItem = const_cast<ItemTemplate*>(sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[rewardIdx]));
-            if(pRewardItem)
-                pRewardItem->Flags = static_cast<ItemFlags>(pRewardItem->Flags | ITEM_FLAG_IS_BOUND_TO_ACCOUNT);
-            if (pRewardItem && choiceitemId != pRewardItem->ItemId && quest->RewardChoiceItemCount[rewardIdx])
+            pRewardItem->Flags = static_cast<ItemFlags>(pRewardItem->Flags | ITEM_FLAG_IS_BOUND_TO_ACCOUNT);
+            if (reward != pRewardItem->ItemId)
             {
                 ItemPosCountVec dest;
-                if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, pRewardItem->ItemId, quest->RewardChoiceItemCount[rewardIdx]) == EQUIP_ERR_OK)
+                if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, pRewardItem->ItemId, quest->RewardItemIdCount[pRewardItem->ItemId]) == EQUIP_ERR_OK)
                 {
                     Item* item = StoreNewItem(dest, pRewardItem->ItemId, true);
-                    item->SetBinding(false);
-                    SendNewItem(item, quest->RewardChoiceItemCount[rewardIdx], true, false, false, false);
+                    SendNewItem(item, quest->RewardItemIdCount[pRewardItem->ItemId], true, false, false, false);
 
-                    sScriptMgr->OnQuestRewardItem(this, item, quest->RewardChoiceItemCount[rewardIdx]);
+                    sScriptMgr->OnQuestRewardItem(this, item, quest->RewardItemIdCount[pRewardItem->ItemId]);
                 }
                 else
-                    problematicItems.emplace_back(pRewardItem->ItemId, quest->RewardChoiceItemCount[rewardIdx]);
+                    problematicItems.emplace_back(pRewardItem->ItemId, quest->RewardItemIdCount[pRewardItem->ItemId]);
             }
         }
     }
@@ -795,10 +791,10 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
             uint32 otherAcc = member->GetSession()->GetAccountId();
             if(member && primaryAcc && otherAcc)
             {
-                if (primaryAcc == otherAcc && this != member)
+                if (primaryAcc == otherAcc)
                 {
                     sScriptMgr->OnGivePlayerXP(member, XP, nullptr, isLFGReward ? PlayerXPSource::XPSOURCE_QUEST_DF : PlayerXPSource::XPSOURCE_QUEST);
-                    member->GiveXP(XP, nullptr, 1.0f, isLFGReward);
+                    GiveXP(XP, nullptr, 1.0f, isLFGReward);
                 }
             }
 
